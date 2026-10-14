@@ -9,6 +9,35 @@ edition = "2021"
 name = "fherma-solution"
 path = "src/main.rs"
 
+# The backend is a build-time choice, so it is a feature here rather than a
+# line in config.jsonc. None of them on means the architecture's default,
+# which is what a fresh clone builds. One at a time; the envelope refuses two.
+#
+#   fft64-*     approximate f64 FFT, base2k up to 19
+#   ntt4x30-*   exact NTT, four 30-bit primes, base2k up to 52
+#   ntt3x42-*   exact NTT, three 42-bit primes, base2k up to 52
+#   *-rayon     one operation spread over a rayon pool, sized by thread_count
+#
+# A wider limb is fewer limbs for the same torus width, and every operation
+# walks the limbs: 550 bits is 29 limbs at base2k 19 and 11 at 52.
+[features]
+default = []
+rayon = ["dep:rayon"]
+fft64-avx = ["poulpy-cpu-avx/enable-avx"]
+fft64-avx-rayon = ["poulpy-cpu-avx/enable-rayon", "rayon"]
+fft64-avx512 = ["dep:poulpy-cpu-avx512", "poulpy-cpu-avx512/enable-avx512f"]
+fft64-avx512-rayon = ["dep:poulpy-cpu-avx512", "poulpy-cpu-avx512/enable-rayon", "rayon"]
+ntt4x30-avx = ["poulpy-cpu-avx/enable-avx"]
+ntt4x30-avx-rayon = ["poulpy-cpu-avx/enable-rayon", "rayon"]
+ntt4x30-avx512 = ["dep:poulpy-cpu-avx512", "poulpy-cpu-avx512/enable-avx512f"]
+ntt4x30-avx512-rayon = ["dep:poulpy-cpu-avx512", "poulpy-cpu-avx512/enable-rayon", "rayon"]
+ntt3x42-ifma = ["dep:poulpy-cpu-avx512", "poulpy-cpu-avx512/enable-ifma"]
+ntt3x42-ifma-rayon = ["dep:poulpy-cpu-avx512", "poulpy-cpu-avx512/enable-ifma", "poulpy-cpu-avx512/enable-rayon", "rayon"]
+fft64-neon = ["poulpy-cpu-arm/enable-neon"]
+fft64-neon-rayon = ["poulpy-cpu-arm/enable-rayon", "rayon"]
+ntt4x30-neon = ["poulpy-cpu-arm/enable-neon"]
+ntt4x30-neon-rayon = ["poulpy-cpu-arm/enable-rayon", "rayon"]
+
 [dependencies]
 poulpy-ckks = { version = "=0.8.3", features = ["test-utils"] }
 poulpy-core = "=0.8.3"
@@ -16,9 +45,11 @@ poulpy-hal = "=0.8.3"
 poulpy-cpu-ref = "=0.8.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+rayon = { version = "1", optional = true }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 poulpy-cpu-avx = { version = "=0.8.3", features = ["enable-avx", "enable-ckks"] }
+poulpy-cpu-avx512 = { version = "=0.8.3", features = ["enable-ckks"], optional = true }
 
 [target.'cfg(target_arch = "aarch64")'.dependencies]
 poulpy-cpu-arm = { version = "=0.8.3", features = ["enable-neon", "enable-ckks"] }

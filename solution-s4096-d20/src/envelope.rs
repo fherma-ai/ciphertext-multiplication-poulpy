@@ -29,10 +29,116 @@ use poulpy_hal::api::ScratchOwnedBorrow;
 use poulpy_hal::layouts::{GaloisElement as _, HostBytesBackend, Module, ScratchOwned};
 use poulpy_hal::source::Source;
 
-#[cfg(target_arch = "aarch64")]
-pub use poulpy_cpu_arm::FFT64Neon as Backend;
-#[cfg(target_arch = "x86_64")]
-pub use poulpy_cpu_avx::FFT64Avx as Backend;
+// The backend, chosen at build time by a cargo feature in Cargo.toml — which
+// is yours, and which the harness never overwrites. It cannot come from
+// config.jsonc: the backend is a type and it parameterises every layout in
+// this file, so a run-time name could not name it.
+//
+//   (none)                 the architecture's default, which is what a first
+//                          build gets anywhere
+//   fft64-avx              approximate f64 FFT              base2k ≤ 19
+//   fft64-avx-rayon
+//   fft64-avx512
+//   fft64-avx512-rayon
+//   ntt4x30-avx            exact NTT, four 30-bit primes    base2k ≤ 52
+//   ntt4x30-avx-rayon
+//   ntt4x30-avx512
+//   ntt4x30-avx512-rayon
+//   ntt3x42-ifma           exact NTT, three 42-bit primes   base2k ≤ 52
+//   ntt3x42-ifma-rayon
+//
+// The limb ceiling is the backend's arithmetic and not a preference:
+// `2·base2k + log2(n)` has to stay inside the transform's exact range, which
+// is 53 bits of mantissa for the f64 FFT and the CRT width for the NTTs. It
+// is the ceiling that decides the work: a torus of 550 bits is 29 limbs at
+// base2k 19 and 11 at 52, and every operation walks the limbs.
+//
+// `*-rayon` backends spread one operation over a rayon pool, sized from
+// `thread_count` before any key is generated.
+const BACKENDS_PICKED: usize = cfg!(feature = "fft64-avx") as usize
+    + cfg!(feature = "fft64-avx-rayon") as usize
+    + cfg!(feature = "fft64-avx512") as usize
+    + cfg!(feature = "fft64-avx512-rayon") as usize
+    + cfg!(feature = "ntt4x30-avx") as usize
+    + cfg!(feature = "ntt4x30-avx-rayon") as usize
+    + cfg!(feature = "ntt4x30-avx512") as usize
+    + cfg!(feature = "ntt4x30-avx512-rayon") as usize
+    + cfg!(feature = "ntt3x42-ifma") as usize
+    + cfg!(feature = "ntt3x42-ifma-rayon") as usize
+    + cfg!(feature = "fft64-neon") as usize
+    + cfg!(feature = "fft64-neon-rayon") as usize
+    + cfg!(feature = "ntt4x30-neon") as usize
+    + cfg!(feature = "ntt4x30-neon-rayon") as usize;
+const _: () = assert!(
+    BACKENDS_PICKED <= 1,
+    "one backend feature at a time: none means the architecture's default",
+);
+
+macro_rules! chosen_backend {
+    ($path:path, $name:literal, $ceiling:expr, $threaded:expr) => {
+        pub use $path as Backend;
+        /// What ran, for the record: the row's arithmetic is not in the config.
+        pub const BACKEND: &str = $name;
+        /// The widest limb this backend's transform keeps exact.
+        pub const BASE2K_CEILING: usize = $ceiling;
+        /// Whether one operation is spread over a rayon pool.
+        pub const THREADED: bool = $threaded;
+    };
+}
+
+#[cfg(all(target_arch = "x86_64", feature = "fft64-avx"))]
+chosen_backend!(poulpy_cpu_avx::FFT64Avx, "fft64-avx", 19, false);
+#[cfg(all(target_arch = "x86_64", feature = "fft64-avx-rayon"))]
+chosen_backend!(poulpy_cpu_avx::FFT64AvxRayon, "fft64-avx-rayon", 19, true);
+#[cfg(all(target_arch = "x86_64", feature = "fft64-avx512"))]
+chosen_backend!(poulpy_cpu_avx512::FFT64Avx512, "fft64-avx512", 19, false);
+#[cfg(all(target_arch = "x86_64", feature = "fft64-avx512-rayon"))]
+chosen_backend!(poulpy_cpu_avx512::FFT64Avx512Rayon, "fft64-avx512-rayon", 19, true);
+#[cfg(all(target_arch = "x86_64", feature = "ntt4x30-avx"))]
+chosen_backend!(poulpy_cpu_avx::NTT4x30Avx, "ntt4x30-avx", 52, false);
+#[cfg(all(target_arch = "x86_64", feature = "ntt4x30-avx-rayon"))]
+chosen_backend!(poulpy_cpu_avx::NTT4x30AvxRayon, "ntt4x30-avx-rayon", 52, true);
+#[cfg(all(target_arch = "x86_64", feature = "ntt4x30-avx512"))]
+chosen_backend!(poulpy_cpu_avx512::NTT4x30Avx512, "ntt4x30-avx512", 52, false);
+#[cfg(all(target_arch = "x86_64", feature = "ntt4x30-avx512-rayon"))]
+chosen_backend!(poulpy_cpu_avx512::NTT4x30Avx512Rayon, "ntt4x30-avx512-rayon", 52, true);
+#[cfg(all(target_arch = "x86_64", feature = "ntt3x42-ifma"))]
+chosen_backend!(poulpy_cpu_avx512::NTT3x42Ifma, "ntt3x42-ifma", 52, false);
+#[cfg(all(target_arch = "x86_64", feature = "ntt3x42-ifma-rayon"))]
+chosen_backend!(poulpy_cpu_avx512::NTT3x42IfmaRayon, "ntt3x42-ifma-rayon", 52, true);
+
+#[cfg(all(target_arch = "aarch64", feature = "fft64-neon"))]
+chosen_backend!(poulpy_cpu_arm::FFT64Neon, "fft64-neon", 19, false);
+#[cfg(all(target_arch = "aarch64", feature = "fft64-neon-rayon"))]
+chosen_backend!(poulpy_cpu_arm::FFT64NeonRayon, "fft64-neon-rayon", 19, true);
+#[cfg(all(target_arch = "aarch64", feature = "ntt4x30-neon"))]
+chosen_backend!(poulpy_cpu_arm::NTT4x30Neon, "ntt4x30-neon", 52, false);
+#[cfg(all(target_arch = "aarch64", feature = "ntt4x30-neon-rayon"))]
+chosen_backend!(poulpy_cpu_arm::NTT4x30NeonRayon, "ntt4x30-neon-rayon", 52, true);
+
+// No feature named: the architecture's default, so that a clone builds and
+// runs before anybody has read this far.
+#[cfg(all(target_arch = "x86_64", not(any(feature = "fft64-avx", feature = "fft64-avx-rayon", feature = "fft64-avx512", feature = "fft64-avx512-rayon", feature = "ntt4x30-avx", feature = "ntt4x30-avx-rayon", feature = "ntt4x30-avx512", feature = "ntt4x30-avx512-rayon", feature = "ntt3x42-ifma", feature = "ntt3x42-ifma-rayon", feature = "fft64-neon", feature = "fft64-neon-rayon", feature = "ntt4x30-neon", feature = "ntt4x30-neon-rayon"))))]
+chosen_backend!(poulpy_cpu_avx::FFT64Avx, "fft64-avx", 19, false);
+#[cfg(all(target_arch = "aarch64", not(any(feature = "fft64-avx", feature = "fft64-avx-rayon", feature = "fft64-avx512", feature = "fft64-avx512-rayon", feature = "ntt4x30-avx", feature = "ntt4x30-avx-rayon", feature = "ntt4x30-avx512", feature = "ntt4x30-avx512-rayon", feature = "ntt3x42-ifma", feature = "ntt3x42-ifma-rayon", feature = "fft64-neon", feature = "fft64-neon-rayon", feature = "ntt4x30-neon", feature = "ntt4x30-neon-rayon"))))]
+chosen_backend!(poulpy_cpu_arm::FFT64Neon, "fft64-neon", 19, false);
+
+/// Sizes the rayon pool for a `*-rayon` backend, and does nothing for the
+/// others. Called before any key is generated, so it is never measured.
+fn set_threads(threads: usize) {
+    #[cfg(feature = "rayon")]
+    {
+        let wanted = if threads == 0 {
+            std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1)
+        } else {
+            threads
+        };
+        // Built once per process; a second call is the error this ignores.
+        let _ = rayon::ThreadPoolBuilder::new().num_threads(wanted).build_global();
+    }
+    #[cfg(not(feature = "rayon"))]
+    let _ = threads;
+}
 
 pub type Encoder = ReferenceEncoder<poulpy_cpu_ref::FFT64ReimTable<f64>>;
 /// A packing on its way in: what encoding produces and encryption consumes.
@@ -60,6 +166,7 @@ pub struct Config {
     pub log_budget: usize,
     pub secret_hamming_weight: usize,
     pub dsize: usize,
+    pub thread_count: usize,
     pub rotation_indexes: Vec<i64>,
     pub security: String,
 }
@@ -94,6 +201,7 @@ impl Config {
             log_budget: number("log_budget", 122),
             secret_hamming_weight: number("secret_hamming_weight", 192),
             dsize: number("dsize", 1),
+            thread_count: number("thread_count", 0),
             rotation_indexes: json
                 .get("rotation_indexes")
                 .and_then(|v| v.as_array())
@@ -139,6 +247,14 @@ impl Envelope {
             "torus width {} bits needs a larger ring: degree {} carries at most {} at 128 bits classic",
             k, cfg.ring_degree, ceiling,
         );
+
+        assert!(
+            cfg.base2k <= BASE2K_CEILING,
+            "base2k {} is wider than the {} backend keeps exact ({})",
+            cfg.base2k, BACKEND, BASE2K_CEILING,
+        );
+        // Before the keys, so the pool is outside every measurement.
+        set_threads(cfg.thread_count);
 
         let params = CKKSTestParams {
             n: cfg.ring_degree,

@@ -39,6 +39,27 @@ ring that cannot carry the declared width at 128 bits classic refuses to seal
 before anything is measured, which is the same guarantee OpenFHE gives and
 DESILO does not.
 
+## The backend, and why it is most of the number
+
+The backend is a cargo feature in `Cargo.toml`, which is the author's file;
+`config.jsonc` cannot name one, because a backend is a type and it
+parameterises every layout in the envelope. Each directory here names one:
+
+| directory suffix | backend | `base2k` | limbs at 550 / 1050 bits |
+| --- | --- | --- | --- |
+| *(none)* | `fft64-avx`, the architecture's default | 19 | 29 / 56 |
+| `-ntt4x30-avx512` | exact NTT, four 30-bit primes, AVX-512 | 52 | 11 / 21 |
+| `-ntt3x42-ifma` | exact NTT, three 42-bit primes, IFMA | 52 | 11 / 21 |
+| `-ntt3x42-ifma-rayon` | the same, over a rayon pool | 52 | 11 / 21 |
+
+The limb ceiling belongs to the backend: `2·base2k + log₂(n)` has to stay
+inside the transform's exact range, which is 53 bits of mantissa for the
+approximate f64 FFT and the CRT width for the exact NTTs. So the FFT64 row
+carries 29 limbs for a torus the RNS libraries carry in 11, and every
+operation walks the limbs. At `base2k` 52 the limb counts are equal — 11 and
+21, the same as OpenFHE's — and what is left to differ is the arithmetic
+itself.
+
 ## What differs from the other rows, and is not in the point
 
 The secret is sparse — `secret_hamming_weight` 192, the library's default
