@@ -1,8 +1,15 @@
 # Ciphertext multiplication on Poulpy
 
-An answer to `ciphertext-multiplication/ckks@1.0.0` with Poulpy 0.8.3. One
+An answer to `ciphertext-multiplication/ckks@1.0.0` with Poulpy 0.9.0. One
 directory per point; the envelope builds the module from `config.jsonc` and
 never reads the point.
+
+0.9.0 reworked the HAL: owned keys are `AlignedBuf` rather than `Vec<u8>`,
+`EncryptionLayout` is gone — the sigma rides on `Noise::ENCRYPTION` and the
+encryption call no longer takes one — and `poulpy-cpu-ref` is
+`poulpy-cpu-portable`. The dependency is the `v0.9.0` tag rather than a
+crates.io release, so the build is not `--offline`. The 0.8.3 rows on the
+boards keep their own commit, which is the one before this.
 
 The measured call is one library call:
 

@@ -39,20 +39,20 @@ ntt4x30-neon = ["poulpy-cpu-arm/enable-neon"]
 ntt4x30-neon-rayon = ["poulpy-cpu-arm/enable-rayon", "rayon"]
 
 [dependencies]
-poulpy-ckks = { version = "=0.8.3", features = ["test-utils"] }
-poulpy-core = "=0.8.3"
-poulpy-hal = "=0.8.3"
-poulpy-cpu-ref = "=0.8.3"
+poulpy-ckks = { git = "https://github.com/poulpy-fhe/poulpy", tag = "v0.9.0", features = ["test-utils"] }
+poulpy-core = { git = "https://github.com/poulpy-fhe/poulpy", tag = "v0.9.0" }
+poulpy-hal = { git = "https://github.com/poulpy-fhe/poulpy", tag = "v0.9.0" }
+poulpy-cpu-portable = { git = "https://github.com/poulpy-fhe/poulpy", tag = "v0.9.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rayon = { version = "1", optional = true }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
-poulpy-cpu-avx = { version = "=0.8.3", features = ["enable-avx", "enable-ckks"] }
-poulpy-cpu-avx512 = { version = "=0.8.3", features = ["enable-ckks"], optional = true }
+poulpy-cpu-avx = { git = "https://github.com/poulpy-fhe/poulpy", tag = "v0.9.0", features = ["enable-avx", "enable-ckks"] }
+poulpy-cpu-avx512 = { git = "https://github.com/poulpy-fhe/poulpy", tag = "v0.9.0", features = ["enable-ckks"], optional = true }
 
 [target.'cfg(target_arch = "aarch64")'.dependencies]
-poulpy-cpu-arm = { version = "=0.8.3", features = ["enable-neon", "enable-ckks"] }
+poulpy-cpu-arm = { git = "https://github.com/poulpy-fhe/poulpy", tag = "v0.9.0", features = ["enable-neon", "enable-ckks"] }
 
 [profile.release]
 opt-level = 3

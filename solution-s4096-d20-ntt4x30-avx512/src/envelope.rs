@@ -20,13 +20,13 @@ use poulpy_ckks::test_suite::helpers::{
 use poulpy_ckks::test_suite::reference_encoder::ReferenceEncoder;
 use poulpy_ckks::test_suite::CKKSTestParams;
 use poulpy_ckks::{CKKSInfos, CKKSLayout, CKKSMeta, SetCKKSInfos, SlotsKind};
-use poulpy_core::EncryptionLayout;
 use poulpy_core::layouts::{
-    Base2K, Degree, GLWEAutomorphismKeyPrepared, GLWELayout,
+    Base2K, GLWEAutomorphismKeyPrepared, GLWELayout,
     GLWESecretPrepared, GLWETensorKeyPrepared, LWEInfos, Rank, TorusPrecision,
 };
 use poulpy_hal::api::ScratchOwnedBorrow;
 use poulpy_hal::layouts::{GaloisElement as _, HostBytesBackend, Module, ScratchOwned};
+use poulpy_hal::AlignedBuf;
 use poulpy_hal::source::Source;
 
 // The backend, chosen at build time by a cargo feature in Cargo.toml — which
@@ -140,7 +140,7 @@ fn set_threads(threads: usize) {
     let _ = threads;
 }
 
-pub type Encoder = ReferenceEncoder<poulpy_cpu_ref::FFT64ReimTable<f64>>;
+pub type Encoder = ReferenceEncoder<poulpy_cpu_portable::ckks_encoding::EncodingFFTTable<f64>>;
 /// A packing on its way in: what encoding produces and encryption consumes.
 pub type Pt = CKKSPlaintextOwned<Backend>;
 /// A packing on its way out: what decryption produces and decoding reads.
@@ -220,16 +220,16 @@ pub struct Env {
     pub module: Module<Backend>,
     pub host_module: Module<HostBytesBackend>,
     pub encoder: Encoder,
-    pub tensor_key: GLWETensorKeyPrepared<Vec<u8>, Backend>,
+    pub tensor_key: GLWETensorKeyPrepared<AlignedBuf, Backend>,
     /// Keyed by galois element: pass the whole map to `ckks_rotate_into`.
-    pub rotation_keys: HashMap<i64, GLWEAutomorphismKeyPrepared<Vec<u8>, Backend>>,
+    pub rotation_keys: HashMap<i64, GLWEAutomorphismKeyPrepared<AlignedBuf, Backend>>,
     pub scratch: ScratchOwned<Backend>,
 }
 
 /// The envelope proper: the Env the answer sees, and the secret it does not.
 pub struct Envelope {
     pub env: Env,
-    sk: GLWESecretPrepared<Vec<u8>, Backend>,
+    sk: GLWESecretPrepared<AlignedBuf, Backend>,
 }
 
 impl Envelope {
@@ -295,13 +295,8 @@ impl Envelope {
 
     pub fn encrypt(&mut self, packings: Vec<Pt>) -> Vec<Ct> {
         let env = &mut self.env;
-        let layout = GLWELayout {
-            n: Degree(env.params.n as u32),
-            base2k: Base2K(env.params.base2k as u32),
-            k: TorusPrecision(env.params.k as u32),
-            rank: Rank(1),
-        };
-        let enc = EncryptionLayout::new_from_default_sigma(layout).expect("encryption layout");
+        // 0.9.0 folded the encryption layout into `Noise::ENCRYPTION` and the
+        // call no longer takes one: the sigma is the library's, as it was.
         packings
             .into_iter()
             .map(|pt| {
@@ -309,7 +304,7 @@ impl Envelope {
                 let mut xa = Source::new(entropy());
                 let mut xe = Source::new(entropy());
                 env.module
-                    .ckks_encrypt_sk(&mut ct, &pt, &self.sk, &enc, &mut xe, &mut xa, &mut env.scratch.borrow())
+                    .ckks_encrypt_sk(&mut ct, &pt, &self.sk, &mut xe, &mut xa, &mut env.scratch.borrow())
                     .expect("encrypt");
                 ct
             })
