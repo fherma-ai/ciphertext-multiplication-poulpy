@@ -1,0 +1,42 @@
+// Point s4096-d20: slots 4096, depth 20, security 128, precision 20.
+//
+// Poulpy is not RNS: there is no prime chain and no level count. A ciphertext
+// is a torus of log_delta + log_budget bits, each multiplication spends
+// log_delta of the budget, and the point's depth is that many spends.
+// Backend: ntt3x42-ifma-rayon, named in Cargo.toml. A 52-bit limb puts this row at
+// the same limb count as the RNS answers — 11 limbs for 550 bits of
+// torus, 21 for 1050 — so what is left to differ is the arithmetic.
+{
+  "scheme": "ckks",
+
+  // The ring is forced by the depth, not the width, exactly as it is for the
+  // RNS answers to this point: twenty spends of a 50-bit scale is a torus
+  // 1050 bits wide, and a ring of 32768 carries 881 at 128 bits classic. So
+  // 4096 slots are packed into a ring that offers 32768, and the rest are
+  // zero.
+  "ring_degree": 65536,
+
+  // The limb size the library's own f64 FFT tests run at.
+  "base2k": 52,
+
+  // Bits of scale, matching the 50-bit scale of the RNS rows.
+  "log_delta": 50,
+
+  // Twenty multiplications’ worth of budget: depth × log_delta. The torus width
+  // is then 1050 bits, and the envelope checks it against what a ring of
+  // 65536 carries at 128 bits classic — 1782 — before anything is measured.
+  "log_budget": 1000,
+
+  // The library's default secret regime. It is sparser than the uniform
+  // ternary secret the OpenFHE rows use, which is a difference this point
+  // does not name and the panel note does.
+  "secret_hamming_weight": 192,
+
+  // Gadget decomposition length for the evaluation keys. At 6 limbs the
+  // decomposition is as coarse as this torus allows, or nearly so: the
+  // fewest rows in the tensor key, and the most noise per gadget product.
+  "dsize": 6,
+
+  "rotation_indexes": [],
+  "security": "128_classic"
+}
