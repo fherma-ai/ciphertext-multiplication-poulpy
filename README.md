@@ -75,3 +75,22 @@ The point names a security level and not a secret distribution, and the
 standard table the envelope checks against is the ternary one, so this row's
 128 bits rests on an assumption the other rows do not need. It is the first
 thing to change if the comparison is to be exact, and the panel note says so.
+
+## Poulpy 0.10.0, and the GPU
+
+The `-010` directories answer the same points with Poulpy 0.10.0 from
+crates.io. They use the envelope from fherma-lang 0.19.2, which makes the
+keys on a host backend, transfers them to the backend and prepares them
+there, and waits for the device before it stops the clock on `run`.
+`solve.rs` is unchanged from 0.9.0.
+
+| directory | backend | image |
+| --- | --- | --- |
+| `solution-s32768-d10-ntt3x42-ifma-010` | `ntt3x42-ifma` | `poulpy-0-10-0-2` |
+| `solution-s32768-d10-ntt3x42-ifma-rayon-010` | `ntt3x42-ifma-rayon` | `poulpy-0-10-0-2` |
+| `solution-s4096-d20-ntt3x42-ifma-rayon-010` | `ntt3x42-ifma-rayon` | `poulpy-0-10-0-2` |
+| `solution-s32768-d10-ntt4x30-cuda-010` | `ntt4x30-cuda`, an NVIDIA GPU | `poulpy-0-10-0-cuda` |
+| `solution-s4096-d20-ntt4x30-cuda-010` | `ntt4x30-cuda`, an NVIDIA GPU | `poulpy-0-10-0-cuda` |
+
+The GPU directories name `poulpy-gpu-portable` in `Cargo.toml`. Only the
+`-cuda` image holds that crate, so they build nowhere else.
